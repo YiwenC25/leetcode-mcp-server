@@ -1,3 +1,8 @@
+import type {
+    FetchFavoriteQuestionsOptions,
+    ReorderFavoriteQuestionsOptions
+} from "./favorite-api.js";
+
 /**
  * Base interface for LeetCode API service implementations.
  * Defines the common methods that all LeetCode service implementations must provide,
@@ -320,12 +325,47 @@ export interface LeetCodeBaseService {
      * @param options.limit - Maximum number of questions to return
      * @param options.skip - Number of questions to skip (for pagination)
      * @param options.searchKeyword - Optional keyword to filter questions by title
+     * @param options.sortField - CUSTOM (website order, default), FRONTEND_ID,
+     *   DIFFICULTY, AC_RATE, FREQUENCY or CONTEST_POINT
+     * @param options.sortOrder - ASCENDING (default) or DESCENDING
      * @returns Promise resolving to `{ hasMore, totalLength, questions }`
      * @throws Error if not authenticated
      */
     fetchFavoriteQuestions(
         favoriteSlug: string,
-        options?: { limit?: number; skip?: number; searchKeyword?: string }
+        options?: FetchFavoriteQuestionsOptions
+    ): Promise<any>;
+
+    /**
+     * Resolves problem numbers (the ids shown on the website, e.g. "1143" or
+     * "LCP 82") to title slugs. Numbers are looked up in batches through the
+     * problem set search; a number is resolved only by an exact frontend id
+     * match. Available on both LeetCode Global and LeetCode CN; the search
+     * rejects anonymous requests on both sites.
+     *
+     * @param questionIds - Problem numbers as numbers or strings
+     * @returns Promise resolving to `{ resolved, unresolved }`
+     * @throws Error if not authenticated
+     */
+    resolveQuestionsByFrontendId(
+        questionIds: Array<string | number>
+    ): Promise<any>;
+
+    /**
+     * Rewrites the custom order of a problem list, either by a sort field
+     * (whole list) or by an explicit list of slugs to move to the top.
+     * Available on both LeetCode Global and LeetCode CN.
+     *
+     * @param favoriteSlug - Slug of the problem list
+     * @param options.sortField - Sort the whole list by this field
+     * @param options.sortOrder - ASCENDING (default) or DESCENDING
+     * @param options.questionSlugs - Slugs to move to the top, in this order
+     * @returns Promise resolving to the order before/after and every move made
+     * @throws Error if not authenticated, options are invalid or a slug is not in the list
+     */
+    reorderFavoriteQuestions(
+        favoriteSlug: string,
+        options: ReorderFavoriteQuestionsOptions
     ): Promise<any>;
 
     /**

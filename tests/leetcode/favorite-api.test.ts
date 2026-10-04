@@ -2,14 +2,47 @@ import { describe, expect, it, vi } from "vitest";
 import {
     addQuestionsToFavorite,
     createFavorite,
+    FAVORITE_QUESTIONS_PAGE_SIZE,
+    fetchAllFavoriteQuestions,
     fetchFavoriteDetail,
     fetchFavoriteQuestions,
     fetchMyFavoriteLists,
     removeQuestionsFromFavorite,
+    reorderFavoriteQuestion,
+    reorderFavoriteQuestions,
     unwrapGraphQL,
     updateFavoriteIsPublic,
     updateFavoriteNameDescription
 } from "../../src/leetcode/favorite-api.js";
+
+/**
+ * Builds a raw favoriteQuestionList page as returned by the API.
+ */
+function questionPage(slugs: string[], hasMore = false) {
+    return {
+        data: {
+            favoriteQuestionList: {
+                hasMore,
+                totalLength: slugs.length,
+                questions: slugs.map((slug, index) => ({
+                    id: index + 1,
+                    questionFrontendId: String(index + 1),
+                    title: slug,
+                    translatedTitle: null,
+                    titleSlug: slug,
+                    difficulty: "EASY",
+                    status: "TO_DO",
+                    paidOnly: false,
+                    topicTags: []
+                }))
+            }
+        }
+    };
+}
+
+function reorderOk() {
+    return { data: { reorderFavoriteQuestionV2: { ok: true, error: null } } };
+}
 
 /**
  * Builds a GraphQL executor mock that resolves with the given responses in order.
@@ -210,6 +243,210 @@ describe("favorite-api", () => {
                 totalLength: 0,
                 questions: []
             });
+        });
+
+        it("forwards an explicit sort", async () => {
+            const graphql = graphqlMock({
+                data: { favoriteQuestionList: null }
+            });
+
+            await fetchFavoriteQuestions(graphql, "abc", {
+                sortField: "DIFFICULTY",
+                sortOrder: "DESCENDING"
+            });
+
+            expect(graphql.mock.calls[0][0].variables.sortBy).toStrictEqual({
+                sortField: "DIFFICULTY",
+                sortOrder: "DESCENDING"
+            });
+        });
+    });
+
+    describe("fetchAllFavoriteQuestions", () => {
+        it("follows pagination until hasMore is false", async () => {
+            const graphql = graphqlMock(
+                questionPage(["a", "b"], true),
+                questionPage(["c"], false)
+            );
+
+            const questions = await fetchAllFavoriteQuestions(graphql, "abc");
+
+            expect(graphql).toHaveBeenCalledTimes(2);
+            expect(graphql.mock.calls[0][0].variables).toMatchObject({
+                favoriteSlug: "abc",
+                limit: FAVORITE_QUESTIONS_PAGE_SIZE,
+                skip: 0,
+                sortBy: { sortField: "CUSTOM", sortOrder: "ASCENDING" }
+            });
+            expect(graphql.mock.calls[1][0].variables.skip).toBe(2);
+            expect(
+                questions.map((question) => question.titleSlug)
+            ).toStrictEqual(["a", "b", "c"]);
+        });
+    });
+
+    describe("reorderFavoriteQuestion", () => {
+        it("sends the slug and zero-based index", async () => {
+            const graphql = graphqlMock(reorderOk());
+
+            const result = await reorderFavoriteQuestion(
+                graphql,
+                "abc",
+                "x",
+                3
+            );
+
+            expect(graphql.mock.calls[0][0].query).toContain(
+                "reorderFavoriteQuestionV2"
+            );
+            expect(graphql.mock.calls[0][0].variables).toStrictEqual({
+                favoriteSlug: "abc",
+                questionSlug: "x",
+                reorderNewIndex: 3
+            });
+            expect(result).toStrictEqual({ ok: true, error: null });
+        });
+    });
+
+    describe("reorderFavoriteQuestions", () => {
+        it("requires exactly one of sortField or questionSlugs", async () => {
+            const graphql = graphqlMock();
+
+            await expect(
+                reorderFavoriteQuestions(graphql, "abc", {})
+            ).rejects.toThrow("exactly one of sortField or questionSlugs");
+            await expect(
+                reorderFavoriteQuestions(graphql, "abc", {
+                    sortField: "DIFFICULTY",
+                    questionSlugs: ["a"]
+                })
+            ).rejects.toThrow("exactly one of sortField or questionSlugs");
+            expect(graphql).not.toHaveBeenCalled();
+        });
+
+        it("sorts by a field, moving only misplaced questions", async () => {
+            const graphql = graphqlMock(
+                questionPage(["a", "b", "c", "d"]), // current CUSTOM order
+                questionPage(["c", "a", "d", "b"]), // server-sorted target
+                reorderOk(), // c -> 0
+                reorderOk(), // d -> 2
+                questionPage(["c", "a", "d", "b"]) // re-read after moves
+            );
+
+            const result = await reorderFavoriteQuestions(graphql, "abc", {
+                sortField: "DIFFICULTY",
+                sortOrder: "DESCENDING"
+            });
+
+            expect(graphql).toHaveBeenCalledTimes(5);
+            expect(graphql.mock.calls[1][0].variables.sortBy).toStrictEqual({
+                sortField: "DIFFICULTY",
+                sortOrder: "DESCENDING"
+            });
+            expect(graphql.mock.calls[2][0].variables).toStrictEqual({
+                favoriteSlug: "abc",
+                questionSlug: "c",
+                reorderNewIndex: 0
+            });
+            expect(graphql.mock.calls[3][0].variables).toStrictEqual({
+                favoriteSlug: "abc",
+                questionSlug: "d",
+                reorderNewIndex: 2
+            });
+            expect(result.mode).toBe("sortField");
+            expect(result.target).toStrictEqual(["c", "a", "d", "b"]);
+            expect(result.moves).toStrictEqual([
+                { questionSlug: "c", newIndex: 0, ok: true, error: null },
+                { questionSlug: "d", newIndex: 2, ok: true, error: null }
+            ]);
+            expect(result.before.map((entry) => entry.titleSlug)).toStrictEqual(
+                ["a", "b", "c", "d"]
+            );
+            expect(result.after.map((entry) => entry.titleSlug)).toStrictEqual([
+                "c",
+                "a",
+                "d",
+                "b"
+            ]);
+            expect(result.success).toBe(true);
+        });
+
+        it("moves the given slugs to the top and keeps the rest in order", async () => {
+            const graphql = graphqlMock(
+                questionPage(["a", "b", "c", "d"]),
+                reorderOk(), // d -> 0
+                reorderOk(), // b -> 1
+                questionPage(["d", "b", "a", "c"])
+            );
+
+            const result = await reorderFavoriteQuestions(graphql, "abc", {
+                questionSlugs: ["d", "b", "d"]
+            });
+
+            expect(graphql).toHaveBeenCalledTimes(4);
+            expect(result.mode).toBe("questionSlugs");
+            expect(result.target).toStrictEqual(["d", "b", "a", "c"]);
+            expect(
+                result.moves.map((move) => [move.questionSlug, move.newIndex])
+            ).toStrictEqual([
+                ["d", 0],
+                ["b", 1]
+            ]);
+            expect(result.success).toBe(true);
+        });
+
+        it("does nothing when the list is already in the target order", async () => {
+            const graphql = graphqlMock(questionPage(["a", "b"]));
+
+            const result = await reorderFavoriteQuestions(graphql, "abc", {
+                questionSlugs: ["a"]
+            });
+
+            expect(graphql).toHaveBeenCalledTimes(1);
+            expect(result.moves).toStrictEqual([]);
+            expect(result.success).toBe(true);
+        });
+
+        it("rejects slugs that are not in the list before moving anything", async () => {
+            const graphql = graphqlMock(questionPage(["a", "b"]));
+
+            await expect(
+                reorderFavoriteQuestions(graphql, "abc", {
+                    questionSlugs: ["zzz", "b"]
+                })
+            ).rejects.toThrow("Questions not in problem list abc: zzz");
+            expect(graphql).toHaveBeenCalledTimes(1);
+        });
+
+        it("stops at the first failed move and reports the real order", async () => {
+            const graphql = graphqlMock(
+                questionPage(["a", "b", "c"]),
+                questionPage(["c", "b", "a"]),
+                {
+                    data: {
+                        reorderFavoriteQuestionV2: {
+                            ok: false,
+                            error: "query param error"
+                        }
+                    }
+                },
+                questionPage(["a", "b", "c"])
+            );
+
+            const result = await reorderFavoriteQuestions(graphql, "abc", {
+                sortField: "FRONTEND_ID"
+            });
+
+            expect(graphql).toHaveBeenCalledTimes(4);
+            expect(result.moves).toStrictEqual([
+                {
+                    questionSlug: "c",
+                    newIndex: 0,
+                    ok: false,
+                    error: "query param error"
+                }
+            ]);
+            expect(result.success).toBe(false);
         });
     });
 

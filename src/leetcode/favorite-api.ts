@@ -1,3 +1,4 @@
+import { GraphQLExecutor, unwrapGraphQL } from "./graphql-executor.js";
 import {
     BATCH_ADD_QUESTIONS_TO_FAVORITE_MUTATION,
     CREATE_FAVORITE_MUTATION,
@@ -6,9 +7,13 @@ import {
     MY_COLLECTED_FAVORITE_LISTS_QUERY,
     MY_CREATED_FAVORITE_LISTS_QUERY,
     REMOVE_QUESTION_FROM_FAVORITE_MUTATION,
+    REORDER_FAVORITE_QUESTION_MUTATION,
     UPDATE_FAVORITE_IS_PUBLIC_MUTATION,
     UPDATE_FAVORITE_NAME_DESCRIPTION_MUTATION
 } from "./graphql/common/favorite-queries.js";
+
+export { unwrapGraphQL } from "./graphql-executor.js";
+export type { GraphQLExecutor, GraphQLRequest } from "./graphql-executor.js";
 
 /**
  * Shared implementation of the LeetCode problem list ("favorites") operations.
@@ -18,20 +23,6 @@ import {
  * a GraphQL executor (the `graphql` method of a leetcode-query client), which is
  * responsible for sending the session cookie and CSRF token.
  */
-
-/**
- * A GraphQL request as accepted by leetcode-query's `graphql` method.
- */
-export interface GraphQLRequest {
-    query: string;
-    variables?: Record<string, unknown>;
-}
-
-/**
- * Executes a GraphQL request and resolves to the raw response body
- * (`{ data, errors? }`).
- */
-export type GraphQLExecutor = (request: GraphQLRequest) => Promise<any>;
 
 /**
  * The favorite type used for all user-created problem lists.
@@ -44,19 +35,70 @@ export const FAVORITE_TYPE_NORMAL = "NORMAL";
 export const DEFAULT_FAVORITE_QUESTIONS_LIMIT = 50;
 
 /**
+ * Page size used when the whole list has to be read (e.g. before reordering).
+ */
+export const FAVORITE_QUESTIONS_PAGE_SIZE = 100;
+
+/**
  * API version of `favoriteQuestionList`. Pagination (`limit` / `skip`) is only
  * applied by the server for "v2".
  */
 export const FAVORITE_QUESTION_LIST_VERSION = "v2";
 
 /**
- * Sort order for `favoriteQuestionList` that matches the order shown on the
- * problem list page of the website.
+ * Sort fields accepted by `favoriteQuestionList` (verified on both sites).
+ * CUSTOM is the order shown on the problem list page of the website.
  */
-export const FAVORITE_QUESTIONS_SORT_BY = {
+export const FAVORITE_QUESTION_SORT_FIELDS = [
+    "CUSTOM",
+    "FRONTEND_ID",
+    "DIFFICULTY",
+    "AC_RATE",
+    "FREQUENCY",
+    "CONTEST_POINT"
+] as const;
+
+export type FavoriteQuestionSortField =
+    (typeof FAVORITE_QUESTION_SORT_FIELDS)[number];
+
+/**
+ * Sort fields that can serve as the target of a reorder (CUSTOM is the order
+ * being rewritten, so it is excluded).
+ */
+export const FAVORITE_QUESTION_REORDER_SORT_FIELDS = [
+    "FRONTEND_ID",
+    "DIFFICULTY",
+    "AC_RATE",
+    "FREQUENCY",
+    "CONTEST_POINT"
+] as const;
+
+/**
+ * Sort directions accepted by `favoriteQuestionList`.
+ */
+export const FAVORITE_QUESTION_SORT_ORDERS = [
+    "ASCENDING",
+    "DESCENDING"
+] as const;
+
+export type FavoriteQuestionSortOrder =
+    (typeof FAVORITE_QUESTION_SORT_ORDERS)[number];
+
+/**
+ * Sort specification passed to `favoriteQuestionList`.
+ */
+export interface FavoriteQuestionSortBy {
+    sortField: FavoriteQuestionSortField;
+    sortOrder: FavoriteQuestionSortOrder;
+}
+
+/**
+ * Default sort for `favoriteQuestionList`: the order shown on the website.
+ */
+export const FAVORITE_QUESTIONS_SORT_BY: FavoriteQuestionSortBy = {
     sortField: "CUSTOM",
     sortOrder: "ASCENDING"
-} as const;
+};
 
 /**
  * Result shape shared by all favorites mutations.
@@ -67,28 +109,64 @@ export interface FavoriteMutationResult {
 }
 
 /**
- * Extracts `data` from a GraphQL response, throwing when the response carries
- * GraphQL errors. LeetCode answers HTTP 200 even for failed operations, so the
- * `errors` array must be checked explicitly.
- *
- * @param response - Raw GraphQL response body
- * @param context - Operation name used in the error message
- * @returns The `data` object of the response (empty object when absent)
- * @throws Error when the response contains GraphQL errors
+ * Options for reading the questions of a problem list.
  */
-export function unwrapGraphQL(response: any, context: string): any {
-    const errors = response?.errors;
-    if (Array.isArray(errors) && errors.length > 0) {
-        const messages = errors
-            .map((error: any) =>
-                typeof error?.message === "string"
-                    ? error.message
-                    : JSON.stringify(error)
-            )
-            .join("; ");
-        throw new Error(`${context}: ${messages}`);
-    }
-    return response?.data ?? {};
+export interface FetchFavoriteQuestionsOptions {
+    limit?: number;
+    skip?: number;
+    searchKeyword?: string;
+    sortField?: FavoriteQuestionSortField;
+    sortOrder?: FavoriteQuestionSortOrder;
+}
+
+/**
+ * Options for reordering a problem list: exactly one of `sortField` (sort the
+ * whole list by that field) or `questionSlugs` (move these questions to the top
+ * in the given order) must be provided.
+ */
+export interface ReorderFavoriteQuestionsOptions {
+    sortField?: FavoriteQuestionSortField;
+    sortOrder?: FavoriteQuestionSortOrder;
+    questionSlugs?: string[];
+}
+
+/**
+ * Question entry as returned by the favorites helpers.
+ */
+export interface FavoriteQuestion {
+    questionId: unknown;
+    questionFrontendId: string;
+    title: string;
+    translatedTitle: string | null;
+    titleSlug: string;
+    difficulty: string;
+    status: string | null;
+    paidOnly: boolean;
+    topicTags: string[];
+}
+
+function simplifyFavoriteQuestion(question: any): FavoriteQuestion {
+    return {
+        questionId: question.id,
+        questionFrontendId: question.questionFrontendId,
+        title: question.title,
+        translatedTitle: question.translatedTitle ?? null,
+        titleSlug: question.titleSlug,
+        difficulty: question.difficulty,
+        status: question.status ?? null,
+        paidOnly: question.paidOnly === true,
+        topicTags: (question.topicTags ?? []).map((tag: any) => tag.slug)
+    };
+}
+
+function resolveSortBy(options?: {
+    sortField?: FavoriteQuestionSortField;
+    sortOrder?: FavoriteQuestionSortOrder;
+}): FavoriteQuestionSortBy {
+    return {
+        sortField: options?.sortField ?? FAVORITE_QUESTIONS_SORT_BY.sortField,
+        sortOrder: options?.sortOrder ?? FAVORITE_QUESTIONS_SORT_BY.sortOrder
+    };
 }
 
 function normalizeMutationResult(result: any): FavoriteMutationResult {
@@ -175,19 +253,21 @@ export async function fetchFavoriteDetail(
  * @param options.limit - Maximum number of questions to return (default: 50)
  * @param options.skip - Number of questions to skip (default: 0)
  * @param options.searchKeyword - Optional keyword to filter questions by title
+ * @param options.sortField - Sort field (default: CUSTOM, the website order)
+ * @param options.sortOrder - ASCENDING (default) or DESCENDING
  * @returns `{ hasMore, totalLength, questions }` with simplified question entries
  */
 export async function fetchFavoriteQuestions(
     graphql: GraphQLExecutor,
     favoriteSlug: string,
-    options?: { limit?: number; skip?: number; searchKeyword?: string }
+    options?: FetchFavoriteQuestionsOptions
 ): Promise<any> {
     const variables = {
         favoriteSlug,
         limit: options?.limit ?? DEFAULT_FAVORITE_QUESTIONS_LIMIT,
         skip: options?.skip ?? 0,
         searchKeyword: options?.searchKeyword,
-        sortBy: FAVORITE_QUESTIONS_SORT_BY,
+        sortBy: resolveSortBy(options),
         version: FAVORITE_QUESTION_LIST_VERSION
     };
 
@@ -205,18 +285,40 @@ export async function fetchFavoriteQuestions(
     return {
         hasMore: list.hasMore ?? false,
         totalLength: list.totalLength ?? questions.length,
-        questions: questions.map((question: any) => ({
-            questionId: question.id,
-            questionFrontendId: question.questionFrontendId,
-            title: question.title,
-            translatedTitle: question.translatedTitle,
-            titleSlug: question.titleSlug,
-            difficulty: question.difficulty,
-            status: question.status,
-            paidOnly: question.paidOnly,
-            topicTags: (question.topicTags ?? []).map((tag: any) => tag.slug)
-        }))
+        questions: questions.map(simplifyFavoriteQuestion)
     };
+}
+
+/**
+ * Reads every question of a problem list by following the pagination.
+ *
+ * @param graphql - GraphQL executor bound to an authenticated client
+ * @param favoriteSlug - Slug of the problem list
+ * @param sortBy - Sort specification (default: CUSTOM ascending)
+ * @returns All questions of the list in the requested order
+ */
+export async function fetchAllFavoriteQuestions(
+    graphql: GraphQLExecutor,
+    favoriteSlug: string,
+    sortBy?: Partial<FavoriteQuestionSortBy>
+): Promise<FavoriteQuestion[]> {
+    const questions: FavoriteQuestion[] = [];
+    let skip = 0;
+
+    for (;;) {
+        const page = await fetchFavoriteQuestions(graphql, favoriteSlug, {
+            limit: FAVORITE_QUESTIONS_PAGE_SIZE,
+            skip,
+            ...resolveSortBy(sortBy)
+        });
+        questions.push(...page.questions);
+        if (!page.hasMore || page.questions.length === 0) {
+            break;
+        }
+        skip += page.questions.length;
+    }
+
+    return questions;
 }
 
 /**
@@ -368,4 +470,172 @@ export async function removeQuestionsFromFavorite(
     }
 
     return results;
+}
+
+/**
+ * Moves one question to a new zero-based position in the list's custom order.
+ * The server removes the question and re-inserts it at the index, so an index
+ * past the end moves it to the end.
+ *
+ * @param graphql - GraphQL executor bound to an authenticated client
+ * @param favoriteSlug - Slug of the problem list
+ * @param questionSlug - Title slug of the question to move
+ * @param newIndex - Zero-based target position
+ * @returns `{ ok, error }`
+ */
+export async function reorderFavoriteQuestion(
+    graphql: GraphQLExecutor,
+    favoriteSlug: string,
+    questionSlug: string,
+    newIndex: number
+): Promise<FavoriteMutationResult> {
+    const data = unwrapGraphQL(
+        await graphql({
+            query: REORDER_FAVORITE_QUESTION_MUTATION,
+            variables: { favoriteSlug, questionSlug, reorderNewIndex: newIndex }
+        }),
+        "reorderFavoriteQuestionV2"
+    );
+
+    return normalizeMutationResult(data.reorderFavoriteQuestionV2);
+}
+
+/**
+ * One move performed while reordering a list.
+ */
+export interface FavoriteReorderMove extends FavoriteMutationResult {
+    questionSlug: string;
+    newIndex: number;
+}
+
+/**
+ * Outcome of reordering a problem list.
+ */
+export interface ReorderFavoriteQuestionsResult {
+    mode: "sortField" | "questionSlugs";
+    before: Array<{ questionFrontendId: string; titleSlug: string }>;
+    target: string[];
+    after: Array<{ questionFrontendId: string; titleSlug: string }>;
+    moves: FavoriteReorderMove[];
+    success: boolean;
+}
+
+function toOrderEntries(questions: FavoriteQuestion[]) {
+    return questions.map((question) => ({
+        questionFrontendId: question.questionFrontendId,
+        titleSlug: question.titleSlug
+    }));
+}
+
+/**
+ * Rewrites the custom order of a problem list.
+ *
+ * The target order comes either from the server (`sortField` + `sortOrder`:
+ * the list sorted by that field) or from the caller (`questionSlugs`: those
+ * questions first, in the given order, followed by the remaining questions in
+ * their current relative order). The current order is then swept from the
+ * front and every question that is out of place is moved to its target index
+ * with one `reorderFavoriteQuestionV2` call, so questions already in position
+ * cost no request. The sweep stops at the first failed move.
+ *
+ * @param graphql - GraphQL executor bound to an authenticated client
+ * @param favoriteSlug - Slug of the problem list
+ * @param options - Exactly one of `sortField` or `questionSlugs`
+ * @returns The order before and after, the target order and every move made
+ * @throws Error when the options are invalid, a requested slug is not in the
+ *   list, or a request fails
+ */
+export async function reorderFavoriteQuestions(
+    graphql: GraphQLExecutor,
+    favoriteSlug: string,
+    options: ReorderFavoriteQuestionsOptions
+): Promise<ReorderFavoriteQuestionsResult> {
+    const hasSortField = options.sortField !== undefined;
+    const hasSlugs =
+        Array.isArray(options.questionSlugs) &&
+        options.questionSlugs.length > 0;
+    if (hasSortField === hasSlugs) {
+        throw new Error(
+            "Provide exactly one of sortField or questionSlugs to reorder a problem list"
+        );
+    }
+
+    const before = await fetchAllFavoriteQuestions(graphql, favoriteSlug);
+    const currentSlugs = before.map((question) => question.titleSlug);
+
+    let target: string[];
+    let mode: ReorderFavoriteQuestionsResult["mode"];
+    if (hasSortField) {
+        mode = "sortField";
+        const sorted = await fetchAllFavoriteQuestions(graphql, favoriteSlug, {
+            sortField: options.sortField,
+            sortOrder: options.sortOrder
+        });
+        target = sorted.map((question) => question.titleSlug);
+    } else {
+        mode = "questionSlugs";
+        const requested = [...new Set(options.questionSlugs)];
+        const missing = requested.filter(
+            (slug) => !currentSlugs.includes(slug)
+        );
+        if (missing.length > 0) {
+            throw new Error(
+                `Questions not in problem list ${favoriteSlug}: ${missing.join(", ")}`
+            );
+        }
+        target = [
+            ...requested,
+            ...currentSlugs.filter((slug) => !requested.includes(slug))
+        ];
+    }
+
+    const working = [...currentSlugs];
+    const moves: FavoriteReorderMove[] = [];
+    for (let index = 0; index < target.length; index++) {
+        const slug = target[index];
+        if (working[index] === slug) {
+            continue;
+        }
+        const from = working.indexOf(slug);
+        if (from < 0) {
+            moves.push({
+                questionSlug: slug,
+                newIndex: index,
+                ok: false,
+                error: "question not in list"
+            });
+            break;
+        }
+
+        const result = await reorderFavoriteQuestion(
+            graphql,
+            favoriteSlug,
+            slug,
+            index
+        );
+        moves.push({ questionSlug: slug, newIndex: index, ...result });
+        if (!result.ok) {
+            break;
+        }
+        working.splice(from, 1);
+        working.splice(index, 0, slug);
+    }
+
+    const after =
+        moves.length === 0
+            ? before
+            : await fetchAllFavoriteQuestions(graphql, favoriteSlug);
+    const afterSlugs = after.map((question) => question.titleSlug);
+    const success =
+        afterSlugs.length === target.length &&
+        afterSlugs.every((slug, index) => slug === target[index]);
+
+    return {
+        mode,
+        before: toOrderEntries(before),
+        target,
+        after: toOrderEntries(after),
+        moves,
+        success
+    };
 }

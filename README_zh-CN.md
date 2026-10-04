@@ -221,8 +221,9 @@ npx -y @jinzcdev/leetcode-mcp-server --transport http --port 3000 --site cn --se
 | **get_problem_list**          |   ✅   |   ✅   |    ✅    | 获取题单的基本信息及其中的题目   |
 | **create_problem_list**       |   ✅   |   ✅   |    ✅    | 创建新题单，可同时加入初始题目   |
 | **update_problem_list**       |   ✅   |   ✅   |    ✅    | 重命名题单、修改描述或公开状态   |
-| **add_problems_to_list**      |   ✅   |   ✅   |    ✅    | 向题单中添加题目                 |
+| **add_problems_to_list**      |   ✅   |   ✅   |    ✅    | 按 slug 或题号向题单中添加题目   |
 | **remove_problems_from_list** |   ✅   |   ✅   |    ✅    | 从题单中移除题目                 |
+| **reorder_problem_list**      |   ✅   |   ✅   |    ✅    | 调整题单内题目的顺序             |
 
 ### 题解
 
@@ -354,6 +355,8 @@ npx -y @jinzcdev/leetcode-mcp-server --transport http --port 3000 --site cn --se
   - `limit`：返回的最大题目数量（数字，可选，默认：50）
   - `skip`：要跳过的题目数量（数字，可选，默认：0）
   - `searchKeyword`：按标题过滤题目的关键字（字符串，可选）
+  - `sortField`：排序字段：`CUSTOM`（网页上显示的顺序）、`FRONTEND_ID`（题号）、`DIFFICULTY`、`AC_RATE`、`FREQUENCY` 或 `CONTEST_POINT`（字符串，可选，默认：`CUSTOM`）
+  - `sortOrder`：`ASCENDING` 或 `DESCENDING`（字符串，可选，默认：`ASCENDING`）
 
 - **create_problem_list** - 创建新题单
 
@@ -361,6 +364,7 @@ npx -y @jinzcdev/leetcode-mcp-server --transport http --port 3000 --site cn --se
   - `description`：题单描述（字符串，可选，默认：""）
   - `isPublic`：是否公开（布尔值，可选，默认：false）
   - `questionSlugs`：创建后立即加入的题目 slug（字符串数组，可选）
+  - `questionIds`：创建后立即加入的题号，例如 `[1, 1143]`；无法解析的题号会在 `unresolved` 中返回（字符串或数字数组，可选）
 
 - **update_problem_list** - 重命名题单、修改描述或切换公开状态（至少提供一个可选字段）
 
@@ -369,14 +373,22 @@ npx -y @jinzcdev/leetcode-mcp-server --transport http --port 3000 --site cn --se
   - `description`：新描述（字符串，可选）
   - `isPublic`：新的公开状态（布尔值，可选）
 
-- **add_problems_to_list** - 向题单中添加题目
+- **add_problems_to_list** - 向题单中添加题目（`questionSlugs` / `questionIds` 至少提供一个；题目按给定顺序追加，slug 在前）
 
   - `favoriteSlug`：题单的 slug（字符串，必需）
-  - `questionSlugs`：要添加的题目 slug，例如 `["two-sum"]`（字符串数组，必需）
+  - `questionSlugs`：要添加的题目 slug，例如 `["two-sum"]`（字符串数组，可选）
+  - `questionIds`：要添加的题号，例如 `[1, 1143]` 或 `["LCP 82"]`；无法解析的题号会在 `unresolved` 中返回（字符串或数字数组，可选）
 
 - **remove_problems_from_list** - 从题单中移除题目
+
   - `favoriteSlug`：题单的 slug（字符串，必需）
   - `questionSlugs`：要移除的题目 slug（字符串数组，必需）
+
+- **reorder_problem_list** - 调整题单内题目的顺序（`sortField` / `questionSlugs` 二选一；每次请求移动一道题）
+  - `favoriteSlug`：题单的 slug（字符串，必需）
+  - `sortField`：按该字段对整个题单排序：`FRONTEND_ID`、`DIFFICULTY`、`AC_RATE`、`FREQUENCY` 或 `CONTEST_POINT`（字符串，可选）
+  - `sortOrder`：`ASCENDING` 或 `DESCENDING`（字符串，可选，默认：`ASCENDING`）
+  - `questionSlugs`：按给定顺序移动到题单最前面的题目 slug，其余题目保持原有相对顺序（字符串数组，可选）
 
 ### 题解
 

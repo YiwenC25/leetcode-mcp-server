@@ -220,8 +220,9 @@ npx -y @jinzcdev/leetcode-mcp-server --transport http --port 3000 --site global 
 | **get_problem_list**          |   ✅   | ✅  |      ✅       | Retrieves a problem list's metadata and its questions        |
 | **create_problem_list**       |   ✅   | ✅  |      ✅       | Creates a new problem list, optionally with initial problems |
 | **update_problem_list**       |   ✅   | ✅  |      ✅       | Renames a problem list, edits its description or visibility  |
-| **add_problems_to_list**      |   ✅   | ✅  |      ✅       | Adds problems to a problem list                              |
+| **add_problems_to_list**      |   ✅   | ✅  |      ✅       | Adds problems to a problem list by slug or problem number    |
 | **remove_problems_from_list** |   ✅   | ✅  |      ✅       | Removes problems from a problem list                         |
+| **reorder_problem_list**      |   ✅   | ✅  |      ✅       | Reorders the problems inside a problem list                  |
 
 ### Solutions
 
@@ -351,6 +352,8 @@ Problem lists are identified by their `favoriteSlug`, the path segment after `/p
   - `limit`: Maximum number of questions to return (number, optional, default: 50)
   - `skip`: Number of questions to skip (number, optional, default: 0)
   - `searchKeyword`: Keyword to filter questions by title (string, optional)
+  - `sortField`: Sort field: `CUSTOM` (the order shown on the website), `FRONTEND_ID`, `DIFFICULTY`, `AC_RATE`, `FREQUENCY` or `CONTEST_POINT` (string, optional, default: `CUSTOM`)
+  - `sortOrder`: `ASCENDING` or `DESCENDING` (string, optional, default: `ASCENDING`)
 
 - **create_problem_list** - Creates a new problem list
 
@@ -358,6 +361,7 @@ Problem lists are identified by their `favoriteSlug`, the path segment after `/p
   - `description`: Description of the list (string, optional, default: "")
   - `isPublic`: Whether the list is publicly visible (boolean, optional, default: false)
   - `questionSlugs`: Problem slugs to add right after creation (string[], optional)
+  - `questionIds`: Problem numbers to add right after creation, e.g. `[1, 1143]`; numbers that cannot be resolved are returned in `unresolved` ((string | number)[], optional)
 
 - **update_problem_list** - Renames a problem list, changes its description or toggles its visibility (at least one optional field is required)
 
@@ -366,14 +370,22 @@ Problem lists are identified by their `favoriteSlug`, the path segment after `/p
   - `description`: New description (string, optional)
   - `isPublic`: New visibility (boolean, optional)
 
-- **add_problems_to_list** - Adds problems to a problem list
+- **add_problems_to_list** - Adds problems to a problem list (at least one of `questionSlugs` / `questionIds` is required; problems are appended in the given order, slugs first)
 
   - `favoriteSlug`: The slug of the problem list (string, required)
-  - `questionSlugs`: Problem slugs to add, e.g. `["two-sum"]` (string[], required)
+  - `questionSlugs`: Problem slugs to add, e.g. `["two-sum"]` (string[], optional)
+  - `questionIds`: Problem numbers to add, e.g. `[1, 1143]` or `["LCP 82"]`; numbers that cannot be resolved are returned in `unresolved` ((string | number)[], optional)
 
 - **remove_problems_from_list** - Removes problems from a problem list
+
   - `favoriteSlug`: The slug of the problem list (string, required)
   - `questionSlugs`: Problem slugs to remove (string[], required)
+
+- **reorder_problem_list** - Reorders the problems inside a problem list (exactly one of `sortField` / `questionSlugs` is required; one problem is moved per request)
+  - `favoriteSlug`: The slug of the problem list (string, required)
+  - `sortField`: Sort the whole list by `FRONTEND_ID`, `DIFFICULTY`, `AC_RATE`, `FREQUENCY` or `CONTEST_POINT` (string, optional)
+  - `sortOrder`: `ASCENDING` or `DESCENDING` (string, optional, default: `ASCENDING`)
+  - `questionSlugs`: Problem slugs to move to the top, in this order; the remaining problems keep their relative order (string[], optional)
 
 ### Solutions
 

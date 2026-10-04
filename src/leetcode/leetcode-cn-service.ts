@@ -20,6 +20,7 @@ import { SEARCH_PROBLEMS_QUERY } from "./graphql/cn/search-problems.js";
 import { SOLUTION_ARTICLE_DETAIL_QUERY } from "./graphql/cn/solution-article-detail.js";
 import { SOLUTION_ARTICLES_QUERY } from "./graphql/cn/solution-articles.js";
 import { LeetCodeBaseService } from "./leetcode-base-service.js";
+import * as questionLookupApi from "./question-lookup-api.js";
 
 /**
  * LeetCode CN API Service Implementation
@@ -678,10 +679,32 @@ export class LeetCodeCNService implements LeetCodeBaseService {
 
     async fetchFavoriteQuestions(
         favoriteSlug: string,
-        options?: { limit?: number; skip?: number; searchKeyword?: string }
+        options?: favoriteApi.FetchFavoriteQuestionsOptions
     ): Promise<any> {
         this.requireAuthentication("fetch problem list questions");
         return await favoriteApi.fetchFavoriteQuestions(
+            this.executeGraphQL,
+            favoriteSlug,
+            options
+        );
+    }
+
+    async resolveQuestionsByFrontendId(
+        questionIds: Array<string | number>
+    ): Promise<any> {
+        this.requireAuthentication("look up problems by number");
+        return await questionLookupApi.resolveQuestionsByFrontendId(
+            this.executeGraphQL,
+            questionIds
+        );
+    }
+
+    async reorderFavoriteQuestions(
+        favoriteSlug: string,
+        options: favoriteApi.ReorderFavoriteQuestionsOptions
+    ): Promise<any> {
+        this.requireAuthentication("reorder problem lists");
+        return await favoriteApi.reorderFavoriteQuestions(
             this.executeGraphQL,
             favoriteSlug,
             options

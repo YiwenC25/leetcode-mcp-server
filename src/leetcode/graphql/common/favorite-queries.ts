@@ -198,6 +198,35 @@ mutation batchAddQuestionsToFavorite(
 }`;
 
 /**
+ * GraphQL mutation that moves a single question to a new position in the
+ * list's custom order.
+ *
+ * `reorderNewIndex` is zero-based and applied as "remove, then insert at the
+ * index"; an index past the end moves the question to the end. The mutation
+ * also accepts `moveToTop` / `moveToBottom` booleans, but `moveToBottom` was
+ * observed to move the question to the top instead, so only the index is used.
+ *
+ * @param favoriteSlug - Slug of the problem list
+ * @param questionSlug - Title slug of the question to move
+ * @param reorderNewIndex - Zero-based target position
+ */
+export const REORDER_FAVORITE_QUESTION_MUTATION = `
+mutation reorderFavoriteQuestionV2(
+    $favoriteSlug: String!
+    $questionSlug: String!
+    $reorderNewIndex: Int!
+) {
+    reorderFavoriteQuestionV2(
+        favoriteSlug: $favoriteSlug
+        questionSlug: $questionSlug
+        reorderNewIndex: $reorderNewIndex
+    ) {
+        ok
+        error
+    }
+}`;
+
+/**
  * GraphQL mutation that removes a single question from a problem list.
  *
  * @param favoriteSlug - Slug of the problem list

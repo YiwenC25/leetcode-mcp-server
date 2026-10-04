@@ -70,6 +70,48 @@ describe.skipIf(!session)(
                 expect(Array.isArray(question.topicTags)).toBe(true);
             }
         }, 60000);
+
+        it("sorts a list's questions by problem number", async () => {
+            const lists = await service.fetchMyFavoriteLists();
+            const first = lists.created.favorites.find(
+                (favorite: { questionNumber: number }) =>
+                    favorite.questionNumber >= 2
+            );
+            if (!first) {
+                return;
+            }
+
+            const page = await service.fetchFavoriteQuestions(first.slug, {
+                limit: 10,
+                sortField: "FRONTEND_ID",
+                sortOrder: "ASCENDING"
+            });
+            const numericIds = page.questions
+                .map((question: { questionFrontendId: string }) =>
+                    Number(question.questionFrontendId)
+                )
+                .filter((id: number) => Number.isFinite(id));
+            for (let index = 1; index < numericIds.length; index++) {
+                expect(numericIds[index]).toBeGreaterThanOrEqual(
+                    numericIds[index - 1]
+                );
+            }
+        }, 60000);
+
+        it("resolves problem numbers to slugs", async () => {
+            const result = await service.resolveQuestionsByFrontendId([
+                1,
+                "1143",
+                "999999"
+            ]);
+
+            expect(
+                result.resolved.map(
+                    (question: { titleSlug: string }) => question.titleSlug
+                )
+            ).toStrictEqual(["two-sum", "longest-common-subsequence"]);
+            expect(result.unresolved).toStrictEqual(["999999"]);
+        }, 30000);
     }
 );
 
@@ -86,6 +128,12 @@ describe("LeetCode Problem List Services (unauthenticated)", () => {
         );
         await expect(
             service.createFavorite({ name: "should-not-run" })
+        ).rejects.toThrow("Authentication required");
+        await expect(service.resolveQuestionsByFrontendId([1])).rejects.toThrow(
+            "Authentication required"
+        );
+        await expect(
+            service.reorderFavoriteQuestions("any", { sortField: "DIFFICULTY" })
         ).rejects.toThrow("Authentication required");
     });
 
