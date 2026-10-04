@@ -289,4 +289,116 @@ export interface LeetCodeBaseService {
         content: string,
         summary: string
     ): Promise<any>;
+
+    /**
+     * Retrieves the authenticated user's problem lists ("favorites").
+     * Available on both LeetCode Global and LeetCode CN.
+     *
+     * @param options.includeCollected - Also return lists the user saved from other creators
+     * @returns Promise resolving to `{ created, collected? }` pages of problem lists
+     * @throws Error if not authenticated
+     */
+    fetchMyFavoriteLists(options?: {
+        includeCollected?: boolean;
+    }): Promise<any>;
+
+    /**
+     * Retrieves the metadata of a single problem list.
+     * Available on both LeetCode Global and LeetCode CN.
+     *
+     * @param favoriteSlug - Slug of the problem list (URL segment after /problem-list/)
+     * @returns Promise resolving to the list metadata
+     * @throws Error if not authenticated or the list is not found
+     */
+    fetchFavoriteDetail(favoriteSlug: string): Promise<any>;
+
+    /**
+     * Retrieves a page of the questions in a problem list.
+     * Available on both LeetCode Global and LeetCode CN.
+     *
+     * @param favoriteSlug - Slug of the problem list
+     * @param options.limit - Maximum number of questions to return
+     * @param options.skip - Number of questions to skip (for pagination)
+     * @param options.searchKeyword - Optional keyword to filter questions by title
+     * @returns Promise resolving to `{ hasMore, totalLength, questions }`
+     * @throws Error if not authenticated
+     */
+    fetchFavoriteQuestions(
+        favoriteSlug: string,
+        options?: { limit?: number; skip?: number; searchKeyword?: string }
+    ): Promise<any>;
+
+    /**
+     * Creates a new, empty problem list for the authenticated user.
+     * Available on both LeetCode Global and LeetCode CN.
+     *
+     * @param options.name - Display name of the list
+     * @param options.description - Optional description
+     * @param options.isPublic - Whether the list is publicly visible (default: false)
+     * @returns Promise resolving to `{ ok, error, favoriteSlug }`
+     * @throws Error if not authenticated
+     */
+    createFavorite(options: {
+        name: string;
+        description?: string;
+        isPublic?: boolean;
+    }): Promise<any>;
+
+    /**
+     * Renames a problem list and/or updates its description.
+     * Available on both LeetCode Global and LeetCode CN.
+     *
+     * @param favoriteSlug - Slug of the problem list
+     * @param name - New (or unchanged) display name; required by LeetCode on every call
+     * @param description - New (or unchanged) description
+     * @returns Promise resolving to `{ ok, error }`
+     * @throws Error if not authenticated
+     */
+    updateFavoriteNameDescription(
+        favoriteSlug: string,
+        name: string,
+        description?: string
+    ): Promise<any>;
+
+    /**
+     * Changes the public visibility of a problem list.
+     * Available on both LeetCode Global and LeetCode CN.
+     *
+     * @param favoriteSlug - Slug of the problem list
+     * @param isPublic - True to make the list public, false for private
+     * @returns Promise resolving to `{ ok, error }`
+     * @throws Error if not authenticated
+     */
+    updateFavoriteIsPublic(
+        favoriteSlug: string,
+        isPublic: boolean
+    ): Promise<any>;
+
+    /**
+     * Adds questions to a problem list.
+     * Available on both LeetCode Global and LeetCode CN.
+     *
+     * @param favoriteSlug - Slug of the problem list
+     * @param questionSlugs - Title slugs of the questions to add (e.g. "two-sum")
+     * @returns Promise resolving to `{ ok, error }`
+     * @throws Error if not authenticated
+     */
+    addQuestionsToFavorite(
+        favoriteSlug: string,
+        questionSlugs: string[]
+    ): Promise<any>;
+
+    /**
+     * Removes questions from a problem list, one request per question.
+     * Available on both LeetCode Global and LeetCode CN.
+     *
+     * @param favoriteSlug - Slug of the problem list
+     * @param questionSlugs - Title slugs of the questions to remove
+     * @returns Promise resolving to one `{ questionSlug, ok, error }` entry per question
+     * @throws Error if not authenticated
+     */
+    removeQuestionsFromFavorite(
+        favoriteSlug: string,
+        questionSlugs: string[]
+    ): Promise<any>;
 }
