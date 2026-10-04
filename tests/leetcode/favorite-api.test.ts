@@ -165,7 +165,9 @@ describe("favorite-api", () => {
                 favoriteSlug: "abc",
                 limit: 50,
                 skip: 0,
-                searchKeyword: undefined
+                searchKeyword: undefined,
+                sortBy: { sortField: "CUSTOM", sortOrder: "ASCENDING" },
+                version: "v2"
             });
             expect(result.hasMore).toBe(true);
             expect(result.totalLength).toBe(120);
@@ -199,7 +201,9 @@ describe("favorite-api", () => {
                 favoriteSlug: "abc",
                 limit: 10,
                 skip: 20,
-                searchKeyword: "sum"
+                searchKeyword: "sum",
+                sortBy: { sortField: "CUSTOM", sortOrder: "ASCENDING" },
+                version: "v2"
             });
             expect(result).toStrictEqual({
                 hasMore: false,

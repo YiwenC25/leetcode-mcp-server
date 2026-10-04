@@ -65,10 +65,16 @@ query favoriteDetailV2($favoriteSlug: String!) {
  * GraphQL query for the questions contained in a problem list, with pagination
  * and optional keyword search.
  *
+ * The server only honours `limit` and `skip` when `version` is "v2"; without it
+ * every question is returned and `hasMore` is always false. `sortBy` with the
+ * CUSTOM field keeps the order the list shows on the website.
+ *
  * @param favoriteSlug - Slug of the problem list
  * @param limit - Maximum number of questions to return
  * @param skip - Number of questions to skip
  * @param searchKeyword - Optional keyword to filter questions by title
+ * @param sortBy - Sort order, e.g. `{ sortField: "CUSTOM", sortOrder: "ASCENDING" }`
+ * @param version - API version; must be "v2" for pagination to apply
  */
 export const FAVORITE_QUESTION_LIST_QUERY = `
 query favoriteQuestionList(
@@ -76,12 +82,16 @@ query favoriteQuestionList(
     $limit: Int
     $skip: Int
     $searchKeyword: String
+    $sortBy: QuestionSortByInput
+    $version: String = "v2"
 ) {
     favoriteQuestionList(
         favoriteSlug: $favoriteSlug
         limit: $limit
         skip: $skip
         searchKeyword: $searchKeyword
+        sortBy: $sortBy
+        version: $version
     ) {
         hasMore
         totalLength

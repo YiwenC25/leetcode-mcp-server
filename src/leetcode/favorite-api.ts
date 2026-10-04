@@ -44,6 +44,21 @@ export const FAVORITE_TYPE_NORMAL = "NORMAL";
 export const DEFAULT_FAVORITE_QUESTIONS_LIMIT = 50;
 
 /**
+ * API version of `favoriteQuestionList`. Pagination (`limit` / `skip`) is only
+ * applied by the server for "v2".
+ */
+export const FAVORITE_QUESTION_LIST_VERSION = "v2";
+
+/**
+ * Sort order for `favoriteQuestionList` that matches the order shown on the
+ * problem list page of the website.
+ */
+export const FAVORITE_QUESTIONS_SORT_BY = {
+    sortField: "CUSTOM",
+    sortOrder: "ASCENDING"
+} as const;
+
+/**
  * Result shape shared by all favorites mutations.
  */
 export interface FavoriteMutationResult {
@@ -171,7 +186,9 @@ export async function fetchFavoriteQuestions(
         favoriteSlug,
         limit: options?.limit ?? DEFAULT_FAVORITE_QUESTIONS_LIMIT,
         skip: options?.skip ?? 0,
-        searchKeyword: options?.searchKeyword
+        searchKeyword: options?.searchKeyword,
+        sortBy: FAVORITE_QUESTIONS_SORT_BY,
+        version: FAVORITE_QUESTION_LIST_VERSION
     };
 
     const data = unwrapGraphQL(
